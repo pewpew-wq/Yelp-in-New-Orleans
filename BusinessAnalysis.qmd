@@ -1,0 +1,350 @@
+---
+title: "Sweet Treats & Bakeries in New Orleans"
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+    editor: visual
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(sf)
+library(tigris)
+library(knitr)
+library(patchwork)
+
+nola_data <- readRDS("nola_data.rds")
+```
+
+## Executive Summary & Category Selection
+
+To investigate where to find the best specialty treats in New Orleans, this project examines three closely related restaurant categories:
+
+*Bakeries:* Specializing in pastries, breads, and baked goods.
+
+*Desserts:* Offering plated desserts, cakes, and specialty sweets.
+
+*Ice Cream & Frozen Yogurt:* Quick-serve frozen treats.
+
+Zipcodes to compare:
+
+*70116 (French Quarter / Faubourg Marigny)*
+
+*70115 (Uptown / Magazine Street Corridor)*
+
+*70130 (Lower Garden District / Warehouse District / CBD)*
+
+*70119 (Mid-City / Fairgrounds)*
+
+*70118 (Uptown / Carrollton / University Area)*
+
+Currently, clear macro-level trends between high-volume tourist hubs (70116) and high-rated residential neighborhood markets (70115) are in the lead for best dessert spots in New Orleans.
+
+## Category Counts and Co-Occurrence Evidence
+
+```{r}
+#| label: category-analysis
+
+restaurant_categories <- nola_data |>
+  filter(!is.na(categories)) |>
+  separate_rows(categories, sep = ",") |>
+  mutate(category = str_to_lower(str_trim(categories))) |>
+  filter(category != "")
+
+target_cats <- c("bakery", "desserts", "ice cream & frozen yogurt")
+
+co_occurrence <- restaurant_categories |>
+  filter(category %in% target_cats) |>
+  inner_join(
+    restaurant_categories |> filter(category %in% target_cats),
+    by = "business_id",
+    relationship = "many-to-many"
+  ) |>
+  filter(category.x < category.y) |>
+  count(category.x, category.y, name = "Co_Occurrence_Count", sort = TRUE)
+
+kable(co_occurrence, caption = "Pairwise Co-Occurrence Counts Among Selected Dessert Categories")
+```
+
+Inclusion rule, at least one inclusion rule ($C_{\text{bakery}} \cup C_{\text{desserts}} \cup C_{\text{ice cream}}$) to capture the full market of sweet treat establishments without artificially restricting multi-category artisan shops.
+
+```{r}
+#| label: inclusion-rule
+
+selected_business_ids <- restaurant_categories |>
+  filter(category %in% target_cats) |>
+  distinct(business_id)
+
+selected_businesses <- nola_data |>
+  inner_join(selected_business_ids, by = "business_id")
+```
+
+## Volume and Metric Summaries
+
+```{r}
+#| label: join-reviews
+
+reviews_raw <- readRDS("nola_Reviews.rds")
+
+category_reviews <- reviews_raw |>
+  rename_with(str_to_lower) |> 
+  semi_join(selected_businesses, by = "business_id") |>
+  mutate(
+    review_date = ymd(date),
+    review_year = year(review_date)
+  )
+
+all_reviewer_summary <- category_reviews |>
+  group_by(business_id) |>
+  summarise(
+    number_of_reviews_all_reviewers = n(),
+    average_stars_all_reviewers = mean(stars, na.rm = TRUE),
+    median_stars_all_reviewers = median(stars, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+kable(head(all_reviewer_summary, 5), caption = "Sample Review Summaries by Business")
+```
+
+## Spacial Joins & Mismatch
+
+```{r}
+#| label: spatial-join-setup
+
+louisiana_places <- tigris::places(
+  state = "LA",
+  cb = TRUE,
+  year = 2024,
+  class = "sf"
+) |>
+  st_transform(4326) |>
+  mutate(place_name = NAME)
+
+restaurant_points <- selected_businesses |>
+  filter(!is.na(longitude), !is.na(latitude)) |>
+  st_as_sf(
+    coords = c("longitude", "latitude"),
+    crs = 4326,
+    remove = FALSE
+  )
+
+restaurants_with_place <- restaurant_points |>
+  st_join(
+    louisiana_places |> select(GEOID, place_name),
+    join = st_within,
+    left = TRUE
+  )
+```
+
+```{r}
+#| label: mismatch-check
+
+mismatch_summary <- restaurants_with_place |>
+  st_drop_geometry() |>
+  count(city, place_name, sort = TRUE)
+
+kable(head(mismatch_summary, 10), caption = "Comparison of Yelp City Labels vs. Official Census Place Names")
+```
+
+## Geography
+
+```{r}
+#| label: geo-summary-initial
+
+global_avg_stars <- mean(selected_businesses$stars, na.rm = TRUE)
+
+geo_summary <- selected_businesses |>
+  filter(!is.na(postal_code) & postal_code != "") |>
+  group_by(postal_code) |>
+  summarize(
+    Restaurant_Count = n(),
+    Avg_Stars = round(mean(stars, na.rm = TRUE), 2),
+    Total_Reviews = sum(review_count, na.rm = TRUE),
+    Avg_Reviews = round(mean(review_count, na.rm = TRUE), 1),
+    Adjusted_Score = round(
+      (sum(review_count * stars) + 50 * global_avg_stars) / (sum(review_count) + 50), 2
+    ),
+    .groups = "drop"
+  ) |>
+  filter(Restaurant_Count > 0) |>
+  arrange(desc(Restaurant_Count))
+
+kable(geo_summary, caption = "Geographic Performance Summary Across Postal Codes")
+
+cat("Total distinct postal codes represented:", nrow(geo_summary), "\n")
+```
+
+```{r}
+#| label: map-visualization
+#| fig.width: 8
+#| fig.height: 6
+
+new_orleans_boundary <- louisiana_places |>
+  filter(place_name == "New Orleans")
+
+ggplot() +
+  geom_sf(data = new_orleans_boundary, fill = "grey95", color = "grey40", linewidth = 0.6) +
+  geom_sf(
+    data = restaurant_points,
+    aes(color = stars),
+    alpha = 0.85,
+    size = 2.2
+  ) +
+  scale_color_viridis_c(option = "C", limits = c(1, 5)) +
+  labs(
+    title = "Late-Night Sweets & Treats in New Orleans",
+    subtitle = "Spatial distribution and star ratings across postal zones",
+    color = "Business\nStars",
+    caption = "Source: Yelp Open Dataset & US Census TIGER/Line"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank()
+  )
+```
+
+```{r}
+#| label: load-geographic-boundaries
+
+zcta_boundaries <- zctas(
+  year = 2020,
+  cb = TRUE,
+  progress_bar = FALSE
+) |>
+  filter(str_starts(ZCTA5CE20, "70|71")) |>
+  st_transform(4326) |>
+  select(area_id = ZCTA5CE20, area_name = ZCTA5CE20)
+
+tract_boundaries <- tracts(
+  state = "LA",
+  county = "071",
+  year = 2022,
+  cb = TRUE,
+  progress_bar = FALSE
+) |>
+  st_transform(4326) |>
+  select(area_id = GEOID, area_name = NAMELSAD)
+```
+
+```{r}
+#| label: execute-spatial-comparison
+
+analyze_geo_system <- function(points_sf, boundaries_sf, system_label) {
+  joined <- points_sf |>
+    st_join(boundaries_sf, join = st_within, left = TRUE) |>
+    st_drop_geometry()
+  
+  unmatched_count <- sum(is.na(joined$area_id))
+  matched_count <- sum(!is.na(joined$area_id))
+  
+  area_counts <- joined |>
+    filter(!is.na(area_id)) |>
+    count(area_id, name = "n_restaurants")
+  
+  tibble(
+    `Geographic system` = system_label,
+    `Number of areas` = n_distinct(boundaries_sf$area_id),
+    `Restaurants assigned` = matched_count,
+    `Unmatched restaurants` = unmatched_count,
+    `Smallest area count` = if (nrow(area_counts) > 0) min(area_counts$n_restaurants) else 0,
+    `Largest area count` = if (nrow(area_counts) > 0) max(area_counts$n_restaurants) else 0
+  )
+}
+
+zcta_metrics <- analyze_geo_system(restaurant_points, zcta_boundaries, "ZIP/ZCTA")
+tract_metrics <- analyze_geo_system(restaurant_points, tract_boundaries, "Census Tract")
+
+geo_system_comparison <- bind_rows(zcta_metrics, tract_metrics)
+
+kable(
+  geo_system_comparison,
+  caption = "Comparison of Candidate Geographic Boundary Systems in New Orleans"
+)
+```
+
+```{r}
+#| label: fig-geo-comparison-map
+#| fig.width: 10
+#| fig.height: 5
+#| fig.cap: "Spatial Comparison of Sweet Treat Establishments: ZCTA vs. Census Tract Boundaries"
+
+zcta_joined <- restaurant_points |>
+  st_join(zcta_boundaries, join = st_within, left = TRUE)
+
+tract_joined <- restaurant_points |>
+  st_join(tract_boundaries, join = st_within, left = TRUE)
+
+p1 <- ggplot() +
+  geom_sf(data = zcta_boundaries, fill = "grey95", color = "grey60", linewidth = 0.4) +
+  geom_sf(data = zcta_joined, aes(color = stars), alpha = 0.8, size = 1.8) +
+  scale_color_viridis_c(option = "C", limits = c(1, 5)) +
+  labs(title = "ZIP / ZCTA Boundaries", color = "Stars") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 12))
+
+p2 <- ggplot() +
+  geom_sf(data = tract_boundaries, fill = "grey95", color = "grey60", linewidth = 0.3) +
+  geom_sf(data = tract_joined, aes(color = stars), alpha = 0.8, size = 1.8) +
+  scale_color_viridis_c(option = "C", limits = c(1, 5)) +
+  labs(title = "Census Tract Boundaries", color = "Stars") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 12))
+
+p1 + p2 + plot_layout(guides = "collect")
+```
+
+
+
+```{r}
+#| label: geo-summary-table-and-chart
+#| fig.cap: "Restaurant Count and Performance by Postal Zone"
+
+global_avg_stars <- mean(selected_businesses$stars, na.rm = TRUE)
+
+geo_summary <- selected_businesses |>
+  filter(!is.na(postal_code) & postal_code != "") |>
+  group_by(postal_code) |>
+  summarize(
+    Restaurant_Count = n(),
+    Avg_Stars = round(mean(stars, na.rm = TRUE), 2),
+    Total_Reviews = sum(review_count, na.rm = TRUE),
+    Adjusted_Score = round(
+      (sum(review_count * stars) + 50 * global_avg_stars) / (sum(review_count) + 50), 2
+    ),
+    .groups = "drop"
+  ) |>
+  filter(Restaurant_Count > 1) |>
+  arrange(desc(Restaurant_Count))
+
+kable(geo_summary, caption = "Performance Summary Across Postal Codes")
+
+geo_summary |>
+  slice_head(n = 10) |>
+  mutate(postal_code = fct_reorder(postal_code, Restaurant_Count)) |>
+  ggplot(aes(x = Restaurant_Count, y = postal_code, fill = Adjusted_Score)) +
+  geom_col() +
+  scale_fill_viridis_c(option = "C", name = "Bayesian\nScore") +
+  labs(
+    title = "Top Postal Codes by Sweet Treat Density",
+    subtitle = "Colored by Bayesian adjusted rating score",
+    x = "Number of Restaurants",
+    y = "Postal Code (ZCTA)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    panel.grid.minor = element_blank()
+  )
+```
+
