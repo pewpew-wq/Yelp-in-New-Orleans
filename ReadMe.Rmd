@@ -1,8 +1,9 @@
 # Yelp in New Orleans: Sweet Treats & Bakeries Analysis
 
-[![Rendered HTML Report](https://img.shields.io/badge/View-HTML%20Report-blue?style=flat-square&logo=html5)](https://pewpew-wq.github.io/Yelp-in-New-Orleans/BusinessAnalysis.html)
-[![R](https://img.shields.io/badge/Made%20with-R-276DC3?style=flat-square&logo=r&logoColor=white)](https://www.r-project.org/)
-[![Quarto](https://img.shields.io/badge/Published-Quarto-41519C?style=flat-square&logo=quarto&logoColor=white)](https://quarto.org/)
+* [View Business Analysis Report](https://pewpew-wq.github.io/Yelp-in-New-Orleans/BusinessAnalysis.html)
+* [View Figures Report](https://pewpew-wq.github.io/Yelp-in-New-Orleans/Figures.html)
+* [View Yelp Analysis Report](https://pewpew-wq.github.io/Yelp-in-New-Orleans/Sweet%20Treats%20%26%20Bakeries%20in%20New%20Orleans.html)
+
 
 ---
 
