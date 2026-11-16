@@ -1,0 +1,88 @@
+# Yelp in New Orleans: Sweet Treats & Bakeries Analysis
+
+[![Rendered HTML Report](https://img.shields.io/badge/View-HTML%20Report-blue?style=flat-square&logo=html5)](https://pewpew-wq.github.io/Yelp-in-New-Orleans/BusinessAnalysis.html)
+[![R](https://img.shields.io/badge/Made%20with-R-276DC3?style=flat-square&logo=r&logoColor=white)](https://www.r-project.org/)
+[![Quarto](https://img.shields.io/badge/Published-Quarto-41519C?style=flat-square&logo=quarto&logoColor=white)](https://quarto.org/)
+
+---
+
+## 1. Research Question & Executive Summary
+
+* **Research Question:** *Which sweet treat spot in New Orleans rank highest for being in control of tourist-driven rating inflation?*
+
+* **In Summarry:** When controlling for tourist-driven rating inflation by adjusting against individual reviewer baselines, Debbie Does Doberge (70130) and Nola Pie Guy (70115) emerge as the highest-ranking sweet treat establishments in New Orleans among frequent local reviewers. While high-volume tourist zones like the French Quarter artificially inflate raw star averages through casual one-time visitors, filtering for repeat reviewers reveals that true culinary consistency and top-tier artisan quality are concentrated along the Uptown and Mid-City residential corridors.
+
+---
+
+## 2. Large-Data Management & Import Workflow
+
+* **The Scale Challenge:** Raw Yelp Open Dataset files (`yelp_academic_dataset_business.json` and `yelp_academic_dataset_review.json`) exceed several gigabytes, presenting severe RAM memory limits and exceeding GitHub's 100MB file size cap.
+
+* **Storage & Processing Solution:** Data was filtered locally in R to isolate New Orleans businesses and their associated reviews, then serialized into compressed, lightweight binary `.rds` files (`nola_data.rds` and `nola_Reviews.rds`). 
+
+* **Repository Practice:** Heavy raw JSON files are excluded via `.gitignore`. The cleaned `.rds` subset files and script pipelines enable fast, reproducible execution without exhausting standard local machine memory.
+
+---
+
+## 3. Category Selection & Co-Occurrence Analysis
+
+To comprehensively capture the sweet treat market without artificially excluding multi-category artisan shops, we defined a union inclusion rule ($C_{\text{bakery}} \cup C_{\text{desserts}} \cup C_{\text{ice cream}}$) across three core categories:
+1. **Bakeries:** Pastries, breads, and baked goods.
+2. **Desserts:** Plated desserts, cakes, and specialty sweets.
+3. **Ice Cream & Frozen Yogurt:** Quick-serve frozen treats.
+
+**Co-Occurrence Evidence:** Pairwise cross-tabulation confirmed significant operational overlap—specifically, a high co-occurrence count ($N = 46$) between dessert and ice cream categories, justifying their combined treatment under a unified sweet-treat market framework.
+
+---
+
+## 4. Geographic System Comparison & Defense
+
+We evaluated four candidate spatial frameworks: **ZIP Code Tabulation Areas (ZCTAs)**, **Census Tracts**, **Neighborhood Statistical Areas (NSAs)**, and **Historical Wards**.
+
+* **The Problem with Census Tracts:** Fine-grained boundaries created widespread low-establishment counts ($N = 0$ or $N = 1$ per zone), generating extreme rating variance and statistical noise.
+
+* **Why ZCTAs Won:** ZCTAs matched 186 restaurants with >95% point-matching stability, mapped cleanly onto natural commercial corridors (e.g., 70115 for Magazine Street, 70116 for the French Quarter), and aggregated sufficient volume per zone to compute reliable Bayesian adjusted scores.
+
+---
+
+## 5. Top 10 Establishments (Reviewer-Normalized Scores)
+
+To neutralize tourist rating inflation, each review was normalized against its author’s personal mean rating ($stars - reviewer\_mean$). Filtering to establishments with **at least 5 eligible reviews** from active local reviewers ($\ge 5$ total reviews) yields the true top 10 leaderboard:
+
+| Rank | Restaurant | ZCTA | All Reviews | Raw Avg Stars | Eligible Reviews | Normalized Score |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: |
+| **1** | Debbie Does Doberge | 70130 | 78 | 4.31 | 15 | **+0.717** |
+| **2** | Nola Pie Guy | 70115 | 17 | 4.88 | 8 | **+0.712** |
+| **3** | Tutti Frutti Frozen Yogurt | 70124 | 14 | 3.07 | 5 | **+0.680** |
+| **4** | Piety and Desire Chocolate | 70125 | 19 | 5.00 | 6 | **+0.651** |
+| **5** | The Original New Orleans Sno-balls | 70122 | 29 | 4.21 | 6 | **+0.622** |
+| **6** | Ro-Bear’s Snowballs & Soft Serve | 70123 | 45 | 4.80 | 11 | **+0.577** |
+| **7** | Park Island Brew | 70119 | 48 | 4.85 | 18 | **+0.574** |
+| **8** | The Cupcake Collection | 70115 | 120 | 4.81 | 26 | **+0.520** |
+| **9** | Loretta’s Authentic Pralines | 70116 | 171 | 4.80 | 10 | **+0.508** |
+| **10** | Nothing Bundt Cakes | 70115 | 39 | 4.15 | 11 | **+0.495** |
+
+---
+
+## 6. Key Findings & Spatial Insights
+
+* **Tourist Inflation vs. Local Consistency:** In the French Quarter (70116), high-volume tourist locations attract casual 5-star ratings. Once normalized against repeat reviewers' baselines, these establishments drop closer to a neutral 0.00 expectation. Conversely, artisan corridors like Magazine Street (70115) and Mid-City (70119) maintain high positive normalized scores (> +0.10).
+
+* **Spatial Clustering:** Top-tier normalized sweet treat spots concentrate heavily along the Uptown/Magazine Street commercial spine and Mid-City corridors.
+
+## 7. AI Prompts and Iterative Refinement Log
+
+1. **Choosing a Category:**
+   * *Initial Prompt:* Take the new_orleans_restaurants datasets where the categories are comma-separated strings split categories into individual rows exclude the generic 'restaurants' and 'food' tags then find top 20 categories and calculate pairwise co-occurrence counts. 
+   
+   * *Refinement:* Focusing on a 'Desserts' theme using c("bakeries", "desserts", "ice cream and frozen yogurt") filter businesses matching at least one of these tags and verify they're at least 7 distinct geographic areas, and generate a clean summary table showing individual counts vs. overlapping counts 
+   
+2. **Normalizing Reviews:**
+   * *Initial Prompt:* Normalize the reviews based on fairness from the reviewer and their past reviews giving scores to evaluate a baseline to grade the restaurants on
+   
+   * *Refinement:* Adding to the normalization code change the main grade to be based on a threshold of sensitivity where a grader might be more likely to give out 5 stars.
+
+3. **Filtering:**
+* *Initial Prompt:* Extract the yelp dataset to columns of reviews into rds file.
+* *Refinement:* After extraction process verify the new file exists and delete the old file.
+---
