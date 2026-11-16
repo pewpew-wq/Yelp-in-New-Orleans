@@ -1,0 +1,136 @@
+---
+title: "Figures"
+format: html
+toc: true
+code-fold: true
+embed-resources: true
+editor: visual
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(sf)
+library(tigris)
+
+# 1. Load the main New Orleans dataset
+nola_data <- readRDS("nola_data.rds")
+
+# 2. Re-create category filtering and inclusion rule
+restaurant_categories <- nola_data |>
+  filter(!is.na(categories)) |>
+  separate_rows(categories, sep = ",") |>
+  mutate(category = str_to_lower(str_trim(categories))) |>
+  filter(category != "")
+
+target_cats <- c("bakery", "desserts", "ice cream & frozen yogurt")
+
+selected_business_ids <- restaurant_categories |>
+  filter(category %in% target_cats) |>
+  distinct(business_id)
+
+selected_businesses <- nola_data |>
+  inner_join(selected_business_ids, by = "business_id")
+
+# 3. Re-create geo_summary for Figure 1
+global_avg_stars <- mean(selected_businesses$stars, na.rm = TRUE)
+
+geo_summary <- selected_businesses |>
+  filter(!is.na(postal_code) & postal_code != "") |>
+  group_by(postal_code) |>
+  summarize(
+    Restaurants = n(),
+    avg_stars = round(mean(stars, na.rm = TRUE), 2),
+    total_reviews = sum(review_count, na.rm = TRUE),
+    avg_reviews = round(mean(review_count, na.rm = TRUE), 1),
+    adjusted_score = round(
+      (sum(review_count * stars) + 50 * global_avg_stars) / (sum(review_count) + 50), 2
+    ),
+    .groups = "drop"
+  ) |>
+  filter(Restaurants > 0) |>
+  arrange(desc(Restaurants))
+```
+
+## Figure 1 
+The bar chart highlights which postal codes contain the highest concentration of sweet treat businesses in New Orleans.
+
+```{r}
+#| label: fig-postal-count
+#| fig.cap: "Number of Sweet Treat Restaurants by Postal Code"
+
+geo_summary |>
+  slice_head(n = 10) |>
+  mutate(postal_code = fct_reorder(postal_code, Restaurants)) |>
+  ggplot(aes(x = Restaurants, y = postal_code, fill = Restaurants)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_viridis_c(option = "C") +
+  labs(
+    title = "Top Postal Codes for Sweet Treats in New Orleans",
+    subtitle = "Ranked by total number of qualifying establishments",
+    x = "Number of Restaurants",
+    y = "Postal Code"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank()
+  )
+```
+
+##Figure 2 
+The box plot compares the spread of Yelp star ratings across your different postal zones or categories.
+
+```{r}
+#| label: fig-ratings-dist
+#| fig.cap: "Distribution of Star Ratings Across Postal Zones"
+
+selected_businesses |>
+  filter(!is.na(postal_code) & postal_code != "") |>
+  ggplot(aes(x = reorder(postal_code, stars, FUN = median), y = stars, fill = postal_code)) +
+  geom_boxplot(alpha = 0.7, show.legend = FALSE) +
+  geom_jitter(width = 0.2, size = 1.5, alpha = 0.5, color = "black") +
+  coord_flip() +
+  scale_fill_viridis_d(option = "plasma") +
+  labs(
+    title = "Star Rating Distribution by Postal Code",
+    subtitle = "Individual points represent unique restaurants",
+    x = "Postal Code",
+    y = "Yelp Star Rating"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank()
+  )
+```
+
+### Figure 3
+
+This scatter plot examines whether restaurants with higher star ratings also tend to accumulate more reviews (or if smaller niche spots punch above their weight).
+
+```{r}
+#| label: fig-reviews-vs-stars
+#| fig.cap: "Relationship Between Review Volume and Star Ratings"
+
+selected_businesses |>
+  filter(review_count < 500) |> 
+  ggplot(aes(x = review_count, y = stars)) +
+  geom_point(aes(color = review_count), alpha = 0.7, size = 2.5) +
+  geom_smooth(method = "loess", formula = y ~ x, color = "darkorange", linetype = "dashed", se = FALSE) +
+  scale_color_viridis_c(option = "viridis") +
+  labs(
+    title = "Review Volume vs. Star Rating",
+    subtitle = "Checking for rating bias among high-volume establishments",
+    x = "Total Review Count",
+    y = "Average Star Rating",
+    color = "Review\nCount"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank()
+  )
+```
