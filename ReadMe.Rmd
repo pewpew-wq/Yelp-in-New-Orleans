@@ -1,6 +1,6 @@
 # Yelp in New Orleans: Sweet Treats & Bakeries Analysis
 
-* [View Business Analysis Report](https://pewpew-wq.github.io/Yelp-in-New-Orleans/BusinessAnalysis.html)
+* [View Business Analysis Report](https://pewpew-wq.github.io/Yelp-in-New-Orleans/Yelp%20in%20New%20Orleans.html)
 * [View Figures Report](https://pewpew-wq.github.io/Yelp-in-New-Orleans/Figures.html)
 * [View Yelp Analysis Report](https://pewpew-wq.github.io/Yelp-in-New-Orleans/Sweet%20Treats%20%26%20Bakeries%20in%20New%20Orleans.html)
 
